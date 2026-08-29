@@ -71,3 +71,71 @@ def get_file(
         "file": file_record,
         "download_url": signed_url.get("signedURL")
     }
+
+from app.schemas.file import FileResponse
+from pydantic import BaseModel
+from typing import Optional
+
+class FileRename(BaseModel):
+    name: str
+
+class FileMove(BaseModel):
+    folder_id: Optional[str] = None
+
+
+@router.put("/{file_id}/rename", response_model=FileResponse)
+def rename_file(
+    file_id: str,
+    update: FileRename,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    file_record = db.query(File).filter(
+        File.id == file_id,
+        File.owner_id == current_user.id
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record.name = update.name
+    db.commit()
+    db.refresh(file_record)
+    return file_record
+
+
+@router.put("/{file_id}/move", response_model=FileResponse)
+def move_file(
+    file_id: str,
+    move: FileMove,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    file_record = db.query(File).filter(
+        File.id == file_id,
+        File.owner_id == current_user.id
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record.folder_id = move.folder_id
+    db.commit()
+    db.refresh(file_record)
+    return file_record
+
+
+@router.delete("/{file_id}")
+def soft_delete_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    file_record = db.query(File).filter(
+        File.id == file_id,
+        File.owner_id == current_user.id
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record.is_deleted = True
+    db.commit()
+    return {"message": "File moved to trash"}
