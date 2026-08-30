@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime
 from app.core.database import Base
 from app.models.folder import Folder
+from app.models.share import Share
+from app.models.link_share import LinkShare
 
 class File(Base):
     __tablename__ = "files"
