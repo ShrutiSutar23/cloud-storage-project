@@ -7,7 +7,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.getenv("JWT_SECRET", "change_this_secret_later")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 20  # 20 days
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 def hash_password(password: str) -> str:

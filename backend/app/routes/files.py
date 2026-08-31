@@ -72,6 +72,19 @@ def get_file(
         "download_url": signed_url.get("signedURL")
     }
 
+@router.get("/search/query", response_model=list[FileResponse])
+def search_files(
+    q: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    results = db.query(File).filter(
+        File.owner_id == current_user.id,
+        File.is_deleted == False,
+        File.name.ilike(f"%{q}%")
+    ).all()
+    return results
+
 from app.schemas.file import FileResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -81,6 +94,15 @@ class FileRename(BaseModel):
 
 class FileMove(BaseModel):
     folder_id: Optional[str] = None
+
+@router.get("", response_model=list[FileResponse])
+def list_all_files(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(File).filter(
+        File.owner_id == current_user.id
+    ).all()
 
 
 @router.put("/{file_id}/rename", response_model=FileResponse)
@@ -139,3 +161,88 @@ def soft_delete_file(
     file_record.is_deleted = True
     db.commit()
     return {"message": "File moved to trash"}
+
+@router.put("/{file_id}/star", response_model=FileResponse)
+def toggle_star(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    file_record = db.query(File).filter(
+        File.id == file_id,
+        File.owner_id == current_user.id
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_record.starred = not file_record.starred
+    db.commit()
+    db.refresh(file_record)
+    return file_record
+
+
+@router.get("/starred/all", response_model=list[FileResponse])
+def list_starred_files(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(File).filter(
+        File.owner_id == current_user.id,
+        File.starred == True,
+        File.is_deleted == False
+    ).all()
+
+@router.get("/trash/all", response_model=list[FileResponse])
+def list_trash(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(File).filter(
+        File.owner_id == current_user.id,
+        File.is_deleted == True
+    ).all()
+
+
+@router.put("/{file_id}/restore", response_model=FileResponse)
+def restore_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    file_record = db.query(File).filter(
+        File.id == file_id,
+        File.owner_id == current_user.id,
+        File.is_deleted == True
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found in trash")
+
+    file_record.is_deleted = False
+    db.commit()
+    db.refresh(file_record)
+    return file_record
+
+
+@router.delete("/{file_id}/permanent")
+def permanent_delete_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    file_record = db.query(File).filter(
+        File.id == file_id,
+        File.owner_id == current_user.id,
+        File.is_deleted == True
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found in trash")
+
+    # Delete the actual file from storage
+    try:
+        supabase.storage.from_("files").remove([file_record.file_url])
+    except Exception:
+        pass  # continue even if storage cleanup fails, don't block the delete
+
+    db.delete(file_record)
+    db.commit()
+    return {"message": "File permanently deleted"}
